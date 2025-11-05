@@ -1,0 +1,5 @@
+{
+  "name": "OmniPost AI",
+  "description": "An AI-powered social media tool that allows you to craft and post content to multiple platforms (TikTok, LinkedIn, Facebook, YouTube, Instagram, Snapchat) simultaneously. It uses AI to tailor your message for each platform's unique audience and style.",
+  "requestFramePermissions": []
+}
