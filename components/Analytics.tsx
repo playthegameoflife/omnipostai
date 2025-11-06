@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PLATFORM_DATA } from '../constants';
 import Spinner from './Spinner';
+import EmptyState from './EmptyState';
 
 interface AnalyticsData {
   totalPosts: number;
@@ -65,6 +66,28 @@ const Analytics: React.FC = () => {
   }
 
   if (!analytics) return null;
+
+  // Show empty state if no posts exist
+  if (analytics.totalPosts === 0) {
+    return (
+      <EmptyState
+        icon={
+          <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        }
+        title="No Analytics Data Yet"
+        description="Once you start posting, you'll see engagement metrics, platform performance, and trends here. Create and publish your first post to get started!"
+        actionLabel="Create Your First Post"
+        onAction={() => {
+          // Scroll to post creation section
+          const postSection = document.querySelector('[data-post-section]');
+          postSection?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }}
+        className="bg-white rounded-lg shadow border border-gray-200"
+      />
+    );
+  }
 
   const getPlatformIcon = (platformName: string) => {
     const platform = PLATFORM_DATA.find(p => p.name === platformName);

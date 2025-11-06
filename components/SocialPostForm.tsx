@@ -4,21 +4,21 @@ import { Platform, type PlatformContent, ContentType, type BaseContent, type Sch
 import { PLATFORM_DATA } from '../constants';
 import { generateSocialPosts, generateHashtags } from '../services/geminiService';
 import ContentIdeation from './ContentIdeation';
-import PlatformCard from './PlatformCard';
+import PlatformSelectorCard from './PlatformSelectorCard';
 import Spinner from './Spinner';
-import { SparklesIcon, UploadIcon } from './icons';
+import { SparklesIcon, UploadIcon, LightbulbIcon } from './icons';
 
 const ContentTypeSelector: React.FC<{ selected: ContentType; onSelect: (type: ContentType) => void; disabled: boolean; }> = ({ selected, onSelect, disabled }) => {
     const types = [ContentType.Text, ContentType.Image, ContentType.Video];
     return (
-        <div className="flex items-center p-1 bg-gray-800/60 rounded-lg space-x-1">
+        <div className="flex items-center p-1 bg-gray-100 rounded-lg space-x-1 border border-gray-200">
             {types.map(type => (
                 <button
                     key={type}
                     onClick={() => onSelect(type)}
                     disabled={disabled}
-                    className={`flex-1 px-3 py-2 text-sm font-semibold rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-purple-500 disabled:cursor-not-allowed
-                        ${selected === type ? 'bg-purple-600 text-white' : 'bg-transparent text-gray-300 hover:bg-gray-700/50'}`}
+                    className={`flex-1 px-3 py-2 text-sm font-semibold rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed
+                        ${selected === type ? 'bg-blue-600 text-white shadow-sm' : 'bg-transparent text-gray-700 hover:bg-gray-200'}`}
                 >
                     {type}
                 </button>
@@ -50,6 +50,7 @@ export const SocialPostForm: React.FC<SocialPostFormProps> = ({ onSchedulePost }
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
   const [scheduleDate, setScheduleDate] = useState('');
+  const [showContentIdeation, setShowContentIdeation] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -131,22 +132,117 @@ export const SocialPostForm: React.FC<SocialPostFormProps> = ({ onSchedulePost }
     }
   }, [baseContent, selectedPlatforms, contentType]);
 
-  const handlePostClick = () => {
+  const handlePostClick = async () => {
     if (selectedPlatforms.length === 0) {
       setError("Please select at least one platform to post to.");
       return;
+    }
+    
+    // Validate that each platform has content
+    for (const platform of selectedPlatforms) {
+      const content = platformContent[platform] || baseContent.description;
+      if (!content || !content.trim()) {
+        setError(`Please provide content for ${platform}.`);
+        return;
+      }
     }
     
     setIsPosting(true);
     setError(null);
     setSuccessMessage(null);
 
-    setTimeout(() => {
+    try {
+      let mediaUrl = null;
+      
+      // Upload media if present
+      if (baseContent.assetFile) {
+        try {
+          const formData = new FormData();
+          formData.append('file', baseContent.assetFile);
+          
+          const token = localStorage.getItem('token');
+          const uploadRes = await fetch('/backend/api/upload', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+          });
+          
+          if (!uploadRes.ok) {
+            const errorData = await uploadRes.json();
+            throw new Error(errorData.error || 'Failed to upload media');
+          }
+          
+          const uploadData = await uploadRes.json();
+          mediaUrl = uploadData.url;
+        } catch (uploadError: any) {
+          setError(`Failed to upload media: ${uploadError.message}`);
+          setIsPosting(false);
+          return;
+        }
+      }
+      
+      // Prepare platform-specific content
+      const contentForPlatforms: Record<string, string> = {};
+      selectedPlatforms.forEach(platform => {
+        contentForPlatforms[platform] = platformContent[platform] || baseContent.description;
+      });
+      
+      // Post to selected platforms
+      const token = localStorage.getItem('token');
+      const postRes = await fetch('/backend/api/post/all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          content: baseContent.description, // Fallback content
+          platforms: selectedPlatforms,
+          platformContent: contentForPlatforms,
+          mediaUrl: mediaUrl || null,
+        }),
+      });
+      
+      if (!postRes.ok) {
+        const errorData = await postRes.json();
+        throw new Error(errorData.error || 'Failed to post');
+      }
+      
+      const results = await postRes.json();
+      
+      // Check for errors in results
+      const errors: string[] = [];
+      const successes: string[] = [];
+      
+      Object.keys(results).forEach(platform => {
+        const result = results[platform];
+        if (result.error) {
+          errors.push(`${platform}: ${result.error}`);
+        } else if (result.success) {
+          successes.push(platform);
+        }
+      });
+      
+      if (errors.length > 0 && successes.length === 0) {
+        // All failed
+        setError(`Failed to post to all platforms: ${errors.join('; ')}`);
+      } else if (errors.length > 0) {
+        // Some succeeded, some failed
+        setSuccessMessage(`Posted to ${successes.join(', ')} successfully!`);
+        setError(`Some posts failed: ${errors.join('; ')}`);
+      } else {
+        // All succeeded
+        const postType = contentType === ContentType.Text ? '' : `${contentType} `;
+        setSuccessMessage(`Successfully posted your ${postType}to ${successes.join(', ')}!`);
+        resetForm();
+      }
+    } catch (err: any) {
+      setError(err.message || 'An unknown error occurred while posting.');
+    } finally {
       setIsPosting(false);
-      const postType = contentType === ContentType.Text ? '' : `${contentType} `;
-      setSuccessMessage(`Successfully posted your ${postType}to ${selectedPlatforms.join(', ')}! (Simulation)`);
-      resetForm();
-    }, 2000);
+    }
   };
   
   const handleHashtagGenerate = useCallback(async (platformName: Platform) => {
@@ -163,44 +259,145 @@ export const SocialPostForm: React.FC<SocialPostFormProps> = ({ onSchedulePost }
     }
   }, [platformContent]);
 
-  const handleScheduleConfirm = () => {
+  const handleScheduleConfirm = async () => {
       if (!scheduleDate) {
           setError('Please select a date and time to schedule the post.');
           return;
       }
-      const newPost: ScheduledPost = {
-          id: new Date().toISOString(),
-          scheduledAt: new Date(scheduleDate).toISOString(),
-          contentType,
-          baseContent: {
-              description: baseContent.description,
-              assetPreview: baseContent.assetPreview,
-          },
-          platformContent,
-          selectedPlatforms,
-      };
-      onSchedulePost(newPost);
-      setSuccessMessage('Post scheduled successfully!');
-      resetForm();
+      if (selectedPlatforms.length === 0) {
+          setError('Please select at least one platform.');
+          return;
+      }
+      
+      setIsScheduling(true);
+      setError(null);
+      setSuccessMessage(null);
+      
+      try {
+          let mediaUrl = null;
+          
+          // Upload media if present
+          if (baseContent.assetFile) {
+              try {
+                  const formData = new FormData();
+                  formData.append('file', baseContent.assetFile);
+                  
+                  const token = localStorage.getItem('token');
+                  const uploadRes = await fetch('/backend/api/upload', {
+                      method: 'POST',
+                      headers: {
+                          Authorization: `Bearer ${token}`,
+                      },
+                      body: formData,
+                  });
+                  
+                  if (!uploadRes.ok) {
+                      throw new Error('Failed to upload media');
+                  }
+                  
+                  const uploadData = await uploadRes.json();
+                  mediaUrl = uploadData.url;
+              } catch (uploadError: any) {
+                  setError(`Failed to upload media: ${uploadError.message}`);
+                  setIsScheduling(false);
+                  return;
+              }
+          }
+          
+          const newPost: ScheduledPost = {
+              id: new Date().toISOString(),
+              scheduledAt: new Date(scheduleDate).toISOString(),
+              contentType,
+              baseContent: {
+                  description: baseContent.description,
+                  assetPreview: baseContent.assetPreview,
+                  assetUrl: mediaUrl || undefined,
+              },
+              platformContent,
+              selectedPlatforms,
+          };
+          onSchedulePost(newPost);
+          setSuccessMessage('Post scheduled successfully!');
+          resetForm();
+      } catch (err: any) {
+          setError(err.message || 'Failed to schedule post');
+      } finally {
+          setIsScheduling(false);
+      }
   }
 
   return (
-    <div className="space-y-8">
-      {error && <div className="bg-red-900/50 border border-red-700 text-red-200 p-3 rounded-lg cursor-pointer" onClick={() => setError(null)}>{error}</div>}
-      {successMessage && <div className="bg-green-900/50 border border-green-700 text-green-200 p-3 rounded-lg cursor-pointer" onClick={() => setSuccessMessage(null)}>{successMessage}</div>}
+    <div className="space-y-6">
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg flex items-start gap-3">
+          <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          </svg>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-red-800">{error}</p>
+            <button onClick={() => setError(null)} className="text-xs text-red-600 hover:text-red-800 mt-1 underline">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+      {successMessage && (
+        <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg flex items-start gap-3">
+          <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-green-800">{successMessage}</p>
+            <button onClick={() => setSuccessMessage(null)} className="text-xs text-green-600 hover:text-green-800 mt-1 underline">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
       
-      <ContentIdeation onIdeaSelect={(idea) => setBaseContent(prev => ({...prev, description: idea}))} disabled={isLoading || isPosting} />
+      {/* Content Ideation - Collapsible */}
+      <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+        <button
+          onClick={() => setShowContentIdeation(!showContentIdeation)}
+          className="w-full px-4 py-3 flex items-center justify-between bg-gray-100 hover:bg-gray-200 transition-colors"
+          disabled={isLoading || isPosting}
+        >
+          <div className="flex items-center gap-2">
+            <LightbulbIcon className="w-5 h-5 text-yellow-600" />
+            <span className="font-medium text-gray-800">Need Content Ideas?</span>
+          </div>
+          <svg
+            className={`w-5 h-5 text-gray-600 transition-transform ${showContentIdeation ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {showContentIdeation && (
+          <div className="p-4">
+            <ContentIdeation onIdeaSelect={(idea) => {
+              setBaseContent(prev => ({...prev, description: idea}));
+              setShowContentIdeation(false); // Auto-collapse after selection
+            }} disabled={isLoading || isPosting} />
+          </div>
+        )}
+      </div>
 
-      <div className="space-y-6">
-        <h3 className="text-xl font-semibold text-white">Create Your Content</h3>
-        <div className="p-6 bg-gray-800/40 border border-gray-700/60 rounded-lg space-y-4">
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Create Your Content</h3>
+          <p className="text-sm text-gray-600">Start by writing your post or let AI generate ideas for you above.</p>
+        </div>
+        <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm space-y-4">
           <ContentTypeSelector selected={contentType} onSelect={setContentType} disabled={isLoading || isPosting} />
           
           <textarea
             value={baseContent.description}
             onChange={handleDescriptionChange}
             placeholder={contentType === ContentType.Text ? "What's on your mind? Type your main post content here..." : `Describe your ${contentType.toLowerCase()} so the AI can write great content for it...`}
-            className="w-full h-36 p-3 bg-gray-800/70 border border-gray-600 rounded-md focus:ring-2 focus:ring-purple-500 focus:outline-none transition-colors text-gray-200 resize-y"
+            className="w-full h-36 p-3 bg-gray-50 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition-colors text-gray-900 resize-y"
             disabled={isLoading || isPosting}
           />
           
@@ -217,7 +414,7 @@ export const SocialPostForm: React.FC<SocialPostFormProps> = ({ onSchedulePost }
                 <button 
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isLoading || isPosting}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 font-semibold text-white bg-gray-700/80 rounded-md hover:bg-gray-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 font-semibold text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors"
                 >
                   <UploadIcon className="w-5 h-5"/>
                   {baseContent.assetFile ? `Uploaded: ${baseContent.assetFile.name}` : `Upload ${contentType}`}
@@ -234,11 +431,14 @@ export const SocialPostForm: React.FC<SocialPostFormProps> = ({ onSchedulePost }
         </div>
       </div>
       
-      <div className="space-y-6">
-          <h3 className="text-xl font-semibold text-white">Select Platforms & Customize</h3>
+      <div className="space-y-4">
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Select Platforms & Customize</h3>
+            <p className="text-sm text-gray-600">Choose which platforms to post to and customize the content for each one.</p>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {PLATFORM_DATA.map(p => (
-              <PlatformCard
+              <PlatformSelectorCard
                 key={p.name}
                 platform={p}
                 isSelected={selectedPlatforms.includes(p.name)}
@@ -252,7 +452,7 @@ export const SocialPostForm: React.FC<SocialPostFormProps> = ({ onSchedulePost }
           </div>
       </div>
 
-      <div className="p-4 bg-gray-800/40 border border-gray-700/60 rounded-lg">
+      <div className="p-6 bg-gray-50 border border-gray-200 rounded-lg shadow-sm">
         <div className="flex flex-col sm:flex-row gap-4 justify-end">
             <button
             onClick={handleGenerateClick}
@@ -276,18 +476,21 @@ export const SocialPostForm: React.FC<SocialPostFormProps> = ({ onSchedulePost }
             {isScheduling ? 'Cancel Schedule' : 'Schedule Post'}
             </button>
         </div>
-        {isScheduling && (
-            <div className="mt-4 p-4 bg-gray-800/50 rounded-lg flex flex-col sm:flex-row gap-4 items-center justify-center">
-                <input
-                    type="datetime-local"
-                    value={scheduleDate}
-                    onChange={(e) => setScheduleDate(e.target.value)}
-                    className="bg-gray-700 text-white px-3 py-2 rounded-md border border-gray-600 focus:ring-purple-500 focus:outline-none"
-                    min={new Date().toISOString().slice(0, 16)}
-                />
+            {isScheduling && (
+            <div className="mt-4 p-4 bg-white rounded-lg border border-gray-300 flex flex-col sm:flex-row gap-4 items-center justify-center">
+                <label className="flex flex-col gap-2 flex-1 max-w-xs">
+                  <span className="text-sm font-medium text-gray-700">Schedule Date & Time</span>
+                  <input
+                      type="datetime-local"
+                      value={scheduleDate}
+                      onChange={(e) => setScheduleDate(e.target.value)}
+                      className="bg-white border border-gray-300 text-gray-900 px-3 py-2 rounded-md focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                      min={new Date().toISOString().slice(0, 16)}
+                  />
+                </label>
                 <button
                     onClick={handleScheduleConfirm}
-                    className="px-6 py-2 font-semibold text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors"
+                    className="px-6 py-3 font-semibold text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors shadow-sm"
                 >
                     Confirm Schedule
                 </button>

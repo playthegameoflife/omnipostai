@@ -17,9 +17,19 @@ const AuthForm: React.FC<AuthFormProps> = ({ mode, onSubmit, error, onGoogleSign
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow max-w-md w-full mx-auto mt-16">
-      <h2 className="text-2xl font-bold mb-6 text-gray-900 text-center">{mode === 'login' ? 'Login to Omnipost' : 'Sign Up for Omnipost'}</h2>
-      {error && <div className="mb-4 text-red-600 text-center">{error}</div>}
+    <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full mx-auto mt-16 border border-gray-200">
+      <h2 className="text-3xl font-bold mb-2 text-gray-900 text-center">{mode === 'login' ? 'Welcome Back' : 'Create Your Account'}</h2>
+      <p className="text-gray-600 text-center mb-6">{mode === 'login' ? 'Login to continue managing your social media' : 'Sign up to start scheduling your posts'}</p>
+      {error && (
+        <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-4 rounded-lg flex items-start gap-3">
+          <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          </svg>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-red-800">{error}</p>
+          </div>
+        </div>
+      )}
       <div className="mb-4">
         <label className="block text-gray-700 mb-2">Email</label>
         <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -28,7 +38,7 @@ const AuthForm: React.FC<AuthFormProps> = ({ mode, onSubmit, error, onGoogleSign
         <label className="block text-gray-700 mb-2">Password</label>
         <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
-      <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded font-semibold hover:bg-blue-700 transition mb-4">{mode === 'login' ? 'Login' : 'Sign Up'}</button>
+      <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm mb-4">{mode === 'login' ? 'Login' : 'Sign Up'}</button>
       {onGoogleSignIn && (
         <button
           type="button"

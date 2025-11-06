@@ -14,7 +14,7 @@ const SignupPage: React.FC = () => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const token = await userCredential.user.getIdToken();
       localStorage.setItem('token', token);
-      navigate('/dashboard');
+      navigate('/welcome');
     } catch (err: any) {
       setError(err.message || 'Signup failed');
     }
@@ -26,7 +26,10 @@ const SignupPage: React.FC = () => {
       const userCredential = await signInWithPopup(auth, googleProvider);
       const token = await userCredential.user.getIdToken();
       localStorage.setItem('token', token);
-      navigate('/dashboard');
+      // Check if this is a new user (first time sign up with Google)
+      // If it's a new user, show welcome. Otherwise, go to dashboard.
+      const isNewUser = userCredential.user.metadata.creationTime === userCredential.user.metadata.lastSignInTime;
+      navigate(isNewUser ? '/welcome' : '/dashboard');
     } catch (err: any) {
       setError(err.message || 'Google sign-up failed');
     }

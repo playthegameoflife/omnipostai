@@ -44,6 +44,12 @@ export type GeneratedPosts = {
   [key: string]: string;
 };
 
+export enum PostStatus {
+  Pending = 'pending',
+  Sent = 'sent',
+  Failed = 'failed'
+}
+
 export interface ScheduledPost {
   id: string;
   scheduledAt: string; // ISO string
@@ -51,7 +57,13 @@ export interface ScheduledPost {
   baseContent: {
     description: string;
     assetPreview?: string;
+    assetUrl?: string;
   };
   platformContent: PlatformContent;
   selectedPlatforms: Platform[];
+  status?: PostStatus;
+  error?: string;
+  retryCount?: number;
+  sentAt?: string;
+  postId?: string;
 }

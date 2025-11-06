@@ -34,7 +34,7 @@ const connectionsRouter = require('./routes/connections');
 app.use('/api/connections', authenticateToken, connectionsRouter);
 
 const postRouter = require('./routes/post');
-app.use('/api/post', postRouter);
+app.use('/api/post', authenticateToken, postRouter);
 
 const scheduleRouter = require('./routes/schedule');
 app.use('/api/schedule', authenticateToken, scheduleRouter);
@@ -51,10 +51,20 @@ app.use('/api/auth/facebook', facebookRouter);
 const analyticsRouter = require('./routes/analytics');
 app.use('/api/analytics', authenticateToken, analyticsRouter);
 
-// Placeholder for auth routes
-// ...
+const uploadRouter = require('./routes/upload');
+app.use('/api/upload', uploadRouter);
+
+const contactRouter = require('./routes/contact');
+app.use('/api/contact', contactRouter);
+
+const paymentRouter = require('./routes/payment');
+app.use('/api/payment', paymentRouter);
+
+// Start scheduler
+require('./scheduler');
 
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log('Scheduler started - checking for scheduled posts every minute');
 }); 
