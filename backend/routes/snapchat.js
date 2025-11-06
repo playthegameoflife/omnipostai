@@ -5,9 +5,9 @@ const { generateState, validateState } = require('../utils/oauthState');
 
 const router = express.Router();
 
-const PINTEREST_CLIENT_ID = process.env.PINTEREST_CLIENT_ID;
-const PINTEREST_CLIENT_SECRET = process.env.PINTEREST_CLIENT_SECRET;
-const PINTEREST_REDIRECT_URI = process.env.PINTEREST_REDIRECT_URI;
+const SNAPCHAT_CLIENT_ID = process.env.SNAPCHAT_CLIENT_ID;
+const SNAPCHAT_CLIENT_SECRET = process.env.SNAPCHAT_CLIENT_SECRET;
+const SNAPCHAT_REDIRECT_URI = process.env.SNAPCHAT_REDIRECT_URI;
 
 router.get('/connect', (req, res) => {
   try {
@@ -17,24 +17,25 @@ router.get('/connect', (req, res) => {
       return res.status(400).json({ error: 'Missing idToken' });
     }
     
-    if (!PINTEREST_CLIENT_ID || !PINTEREST_REDIRECT_URI) {
-      return res.status(500).json({ error: 'Server configuration error: Missing Pinterest credentials' });
+    if (!SNAPCHAT_CLIENT_ID || !SNAPCHAT_REDIRECT_URI) {
+      return res.status(500).json({ error: 'Server configuration error: Missing Snapchat credentials' });
     }
     
     // Generate secure state token
     const stateToken = generateState(idToken);
     
-    const url = `https://www.pinterest.com/oauth/?` +
+    // Snap Kit OAuth authorization URL
+    const url = `https://accounts.snapchat.com/login/oauth2/authorize?` +
+      `client_id=${SNAPCHAT_CLIENT_ID}&` +
+      `redirect_uri=${encodeURIComponent(SNAPCHAT_REDIRECT_URI)}&` +
       `response_type=code&` +
-      `client_id=${PINTEREST_CLIENT_ID}&` +
-      `redirect_uri=${encodeURIComponent(PINTEREST_REDIRECT_URI)}&` +
-      `scope=read_public,write_public&` +
+      `scope=user.bitmoji,user.display_name,user.external_id&` +
       `state=${encodeURIComponent(stateToken)}`;
     
     res.redirect(url);
   } catch (error) {
-    console.error('Pinterest OAuth connect error:', error);
-    res.redirect('/dashboard?error=' + encodeURIComponent('Failed to initiate Pinterest connection'));
+    console.error('Snapchat OAuth connect error:', error);
+    res.redirect('/dashboard?error=' + encodeURIComponent('Failed to initiate Snapchat connection'));
   }
 });
 
@@ -43,7 +44,7 @@ router.get('/callback', async (req, res) => {
   
   // Handle OAuth errors
   if (error) {
-    console.error('Pinterest OAuth callback error:', error);
+    console.error('Snapchat OAuth callback error:', error);
     const errorMessage = error === 'access_denied' 
       ? 'Connection was denied. Please try again.'
       : `Connection failed: ${error}`;
@@ -63,24 +64,24 @@ router.get('/callback', async (req, res) => {
       return res.redirect('/dashboard?error=' + encodeURIComponent('Invalid or expired state token'));
     }
     
-    if (!PINTEREST_CLIENT_ID || !PINTEREST_CLIENT_SECRET || !PINTEREST_REDIRECT_URI) {
+    if (!SNAPCHAT_CLIENT_ID || !SNAPCHAT_CLIENT_SECRET || !SNAPCHAT_REDIRECT_URI) {
       return res.redirect('/dashboard?error=' + encodeURIComponent('Server configuration error'));
     }
     
-    const response = await axios.post('https://api.pinterest.com/v1/oauth/token', null, {
-      params: {
-        grant_type: 'authorization_code',
-        client_id: PINTEREST_CLIENT_ID,
-        client_secret: PINTEREST_CLIENT_SECRET,
-        code,
-        redirect_uri: PINTEREST_REDIRECT_URI,
-      },
+    // Exchange code for access token
+    const response = await axios.post('https://accounts.snapchat.com/login/oauth2/access_token', {
+      client_id: SNAPCHAT_CLIENT_ID,
+      client_secret: SNAPCHAT_CLIENT_SECRET,
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: SNAPCHAT_REDIRECT_URI,
+    }, {
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
     });
     
-    const { access_token, expires_in } = response.data;
+    const { access_token, refresh_token, expires_in } = response.data;
     
     if (!access_token) {
       return res.redirect('/dashboard?error=' + encodeURIComponent('Failed to obtain access token'));
@@ -92,23 +93,22 @@ router.get('/callback', async (req, res) => {
     
     await admin.firestore().collection('connections').add({
       userId,
-      platform: 'Pinterest',
+      platform: 'Snapchat',
       accessToken: access_token,
+      refreshToken: refresh_token || null,
       expiresAt: Date.now() + (expires_in ? expires_in * 1000 : 0),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     
-    res.redirect('/dashboard?connected=Pinterest');
+    res.redirect('/dashboard?connected=Snapchat');
   } catch (error) {
-    console.error('Pinterest OAuth callback error:', error);
+    console.error('Snapchat OAuth callback error:', error);
     
     // Handle specific OAuth errors
     let errorMessage = 'Connection failed';
     if (error.response?.data) {
       const oauthError = error.response.data;
-      if (oauthError.message) {
-        errorMessage = oauthError.message;
-      } else if (oauthError.error_description) {
+      if (oauthError.error_description) {
         errorMessage = oauthError.error_description;
       } else if (oauthError.error) {
         errorMessage = oauthError.error;
@@ -121,4 +121,5 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;
+

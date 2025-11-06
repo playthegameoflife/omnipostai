@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import ContentCalendar from './ContentCalendar';
 import Analytics from './Analytics';
 import ContentIdeation from './ContentIdeation';
@@ -15,6 +15,7 @@ import { useOnboarding } from '../hooks/useOnboarding';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [content, setContent] = useState('');
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
   const [loading, setLoading] = useState(false);
@@ -123,6 +124,55 @@ const Dashboard: React.FC = () => {
     fetchConnections();
   }, []);
 
+  // Handle OAuth callback redirects
+  useEffect(() => {
+    const connected = searchParams.get('connected');
+    const error = searchParams.get('error');
+
+    if (connected) {
+      // Successfully connected to a platform
+      const platform = connected as Platform;
+      
+      // Refresh connections list
+      fetchConnections();
+      
+      // Show success message
+      setToast({ message: `Successfully connected to ${platform}!`, type: 'success' });
+      
+      // Expand connections section if collapsed
+      setExpandedSections(prev => ({ ...prev, connections: true }));
+      
+      // Clear loading state
+      setLoadingPlatform(null);
+      
+      // Remove query parameter from URL
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('connected');
+      setSearchParams(newSearchParams, { replace: true });
+      
+      // Scroll to connections section after a brief delay
+      setTimeout(() => {
+        const connectionsSection = document.querySelector('[data-platform-card]');
+        if (connectionsSection) {
+          connectionsSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+
+    if (error) {
+      // OAuth error occurred
+      setToast({ message: `Connection failed: ${error}`, type: 'error' });
+      
+      // Clear loading state
+      setLoadingPlatform(null);
+      
+      // Remove query parameter from URL
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('error');
+      setSearchParams(newSearchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   const schedulePost = async (postData: { 
     platforms?: string[]; 
     platform?: string;
@@ -179,6 +229,18 @@ const Dashboard: React.FC = () => {
         window.location.href = `/backend/api/auth/linkedin/connect?idToken=${encodeURIComponent(idToken)}`;
       } else if (platform === Platform.Pinterest) {
         window.location.href = `/backend/api/auth/pinterest/connect?idToken=${encodeURIComponent(idToken)}`;
+      } else if (platform === Platform.Instagram) {
+        window.location.href = `/backend/api/auth/instagram/connect?idToken=${encodeURIComponent(idToken)}`;
+      } else if (platform === Platform.YouTube) {
+        window.location.href = `/backend/api/auth/youtube/connect?idToken=${encodeURIComponent(idToken)}`;
+      } else if (platform === Platform.TikTok) {
+        window.location.href = `/backend/api/auth/tiktok/connect?idToken=${encodeURIComponent(idToken)}`;
+      } else if (platform === Platform.Threads) {
+        window.location.href = `/backend/api/auth/threads/connect?idToken=${encodeURIComponent(idToken)}`;
+      } else if (platform === Platform.Bluesky) {
+        window.location.href = `/backend/api/auth/bluesky/connect?idToken=${encodeURIComponent(idToken)}`;
+      } else if (platform === Platform.Snapchat) {
+        window.location.href = `/backend/api/auth/snapchat/connect?idToken=${encodeURIComponent(idToken)}`;
       } else {
         setToast({ message: 'OAuth for this platform coming soon!', type: 'error' });
       }

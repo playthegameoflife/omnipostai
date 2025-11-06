@@ -5,9 +5,10 @@ const { generateState, validateState } = require('../utils/oauthState');
 
 const router = express.Router();
 
-const FACEBOOK_CLIENT_ID = process.env.FACEBOOK_CLIENT_ID;
-const FACEBOOK_CLIENT_SECRET = process.env.FACEBOOK_CLIENT_SECRET;
-const FACEBOOK_REDIRECT_URI = process.env.FACEBOOK_REDIRECT_URI;
+// Threads uses Meta/Facebook Graph API (same app as Facebook/Instagram)
+const THREADS_CLIENT_ID = process.env.FACEBOOK_CLIENT_ID || process.env.THREADS_CLIENT_ID;
+const THREADS_CLIENT_SECRET = process.env.FACEBOOK_CLIENT_SECRET || process.env.THREADS_CLIENT_SECRET;
+const THREADS_REDIRECT_URI = process.env.THREADS_REDIRECT_URI;
 
 router.get('/connect', (req, res) => {
   try {
@@ -17,23 +18,24 @@ router.get('/connect', (req, res) => {
       return res.status(400).json({ error: 'Missing idToken' });
     }
     
-    if (!FACEBOOK_CLIENT_ID || !FACEBOOK_REDIRECT_URI) {
-      return res.status(500).json({ error: 'Server configuration error: Missing Facebook credentials' });
+    if (!THREADS_CLIENT_ID || !THREADS_REDIRECT_URI) {
+      return res.status(500).json({ error: 'Server configuration error: Missing Threads credentials' });
     }
     
     // Generate secure state token
     const stateToken = generateState(idToken);
     
+    // Threads uses Facebook Graph API with Threads scopes
     const url = `https://www.facebook.com/v18.0/dialog/oauth?` +
-      `client_id=${FACEBOOK_CLIENT_ID}&` +
-      `redirect_uri=${encodeURIComponent(FACEBOOK_REDIRECT_URI)}&` +
+      `client_id=${THREADS_CLIENT_ID}&` +
+      `redirect_uri=${encodeURIComponent(THREADS_REDIRECT_URI)}&` +
       `state=${encodeURIComponent(stateToken)}&` +
-      `scope=public_profile,pages_manage_posts,pages_read_engagement,pages_show_list,pages_manage_metadata`;
+      `scope=threads_basic,threads_content_publish,pages_show_list`;
     
     res.redirect(url);
   } catch (error) {
-    console.error('Facebook OAuth connect error:', error);
-    res.redirect('/dashboard?error=' + encodeURIComponent('Failed to initiate Facebook connection'));
+    console.error('Threads OAuth connect error:', error);
+    res.redirect('/dashboard?error=' + encodeURIComponent('Failed to initiate Threads connection'));
   }
 });
 
@@ -42,7 +44,7 @@ router.get('/callback', async (req, res) => {
   
   // Handle OAuth errors
   if (error) {
-    console.error('Facebook OAuth callback error:', error);
+    console.error('Threads OAuth callback error:', error);
     const errorMessage = error === 'access_denied' 
       ? 'Connection was denied. Please try again.'
       : `Connection failed: ${error}`;
@@ -62,15 +64,16 @@ router.get('/callback', async (req, res) => {
       return res.redirect('/dashboard?error=' + encodeURIComponent('Invalid or expired state token'));
     }
     
-    if (!FACEBOOK_CLIENT_ID || !FACEBOOK_CLIENT_SECRET || !FACEBOOK_REDIRECT_URI) {
+    if (!THREADS_CLIENT_ID || !THREADS_CLIENT_SECRET || !THREADS_REDIRECT_URI) {
       return res.redirect('/dashboard?error=' + encodeURIComponent('Server configuration error'));
     }
     
+    // Exchange code for access token using Facebook Graph API
     const response = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
       params: {
-        client_id: FACEBOOK_CLIENT_ID,
-        redirect_uri: FACEBOOK_REDIRECT_URI,
-        client_secret: FACEBOOK_CLIENT_SECRET,
+        client_id: THREADS_CLIENT_ID,
+        redirect_uri: THREADS_REDIRECT_URI,
+        client_secret: THREADS_CLIENT_SECRET,
         code,
       },
     });
@@ -85,17 +88,48 @@ router.get('/callback', async (req, res) => {
     const decoded = await admin.auth().verifyIdToken(idToken);
     const userId = decoded.uid;
     
+    // Get Threads Page ID (requires Facebook Page connected to Threads)
+    let threadsPageId = null;
+    try {
+      const pagesResponse = await axios.get('https://graph.facebook.com/v18.0/me/accounts', {
+        params: { access_token: access_token },
+      });
+      
+      if (pagesResponse.data.data && pagesResponse.data.data.length > 0) {
+        // Find page with Threads connected
+        for (const page of pagesResponse.data.data) {
+          try {
+            const threadsResponse = await axios.get(`https://graph.facebook.com/v18.0/${page.id}`, {
+              params: {
+                access_token: access_token,
+                fields: 'threads_profile',
+              },
+            });
+            if (threadsResponse.data.threads_profile) {
+              threadsPageId = page.id;
+              break;
+            }
+          } catch (err) {
+            // Continue to next page
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch Threads Page ID:', err.message);
+    }
+    
     await admin.firestore().collection('connections').add({
       userId,
-      platform: 'Facebook',
+      platform: 'Threads',
       accessToken: access_token,
       expiresAt: Date.now() + (expires_in ? expires_in * 1000 : 0),
+      threadsPageId: threadsPageId,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     
-    res.redirect('/dashboard?connected=Facebook');
+    res.redirect('/dashboard?connected=Threads');
   } catch (error) {
-    console.error('Facebook OAuth callback error:', error);
+    console.error('Threads OAuth callback error:', error);
     
     // Handle specific OAuth errors
     let errorMessage = 'Connection failed';
@@ -116,4 +150,5 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;
+

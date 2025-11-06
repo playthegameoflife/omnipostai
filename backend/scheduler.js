@@ -1,7 +1,18 @@
 const cron = require('node-cron');
 const admin = require('./firebase');
 const db = admin.firestore();
-const { postToTwitter, postToLinkedIn, postToFacebook, postToPinterest } = require('./routes/post');
+const { 
+  postToTwitter, 
+  postToLinkedIn, 
+  postToFacebook, 
+  postToPinterest,
+  postToInstagram,
+  postToYouTube,
+  postToTikTok,
+  postToThreads,
+  postToBluesky,
+  postToSnapchat
+} = require('./routes/post');
 
 // Run every minute
 cron.schedule('* * * * *', async () => {
@@ -35,7 +46,7 @@ cron.schedule('* * * * *', async () => {
         }
         
         const connection = connectionSnapshot.docs[0].data();
-        const { accessToken, refreshToken } = connection;
+        const { accessToken, refreshToken, instagramAccountId, threadsPageId, blueskyDid } = connection;
         
         let result;
         // Call appropriate posting function based on platform
@@ -53,6 +64,24 @@ cron.schedule('* * * * *', async () => {
           case 'pinterest':
             result = await postToPinterest({ content, mediaUrl, accessToken });
             break;
+          case 'instagram':
+            result = await postToInstagram({ content, mediaUrl, accessToken, instagramAccountId });
+            break;
+          case 'youtube':
+            result = await postToYouTube({ content, mediaUrl, accessToken });
+            break;
+          case 'tiktok':
+            result = await postToTikTok({ content, mediaUrl, accessToken });
+            break;
+          case 'threads':
+            result = await postToThreads({ content, mediaUrl, accessToken, threadsPageId });
+            break;
+          case 'bluesky':
+            result = await postToBluesky({ content, mediaUrl, accessToken, blueskyDid });
+            break;
+          case 'snapchat':
+            result = await postToSnapchat({ content, mediaUrl, accessToken });
+            break;
           default:
             throw new Error(`Unsupported platform: ${platform}`);
         }
@@ -62,7 +91,7 @@ cron.schedule('* * * * *', async () => {
           await doc.ref.update({
             status: 'sent',
             sentAt: admin.firestore.FieldValue.serverTimestamp(),
-            postId: result.tweetId || result.postId || result.pinId,
+            postId: result.tweetId || result.postId || result.pinId || result.id || result.uri,
             result: result
           });
           console.log(`Successfully posted to ${platform} for user ${userId}`);

@@ -48,6 +48,24 @@ app.use('/api/auth/pinterest', pinterestRouter);
 const facebookRouter = require('./routes/facebook');
 app.use('/api/auth/facebook', facebookRouter);
 
+const instagramRouter = require('./routes/instagram');
+app.use('/api/auth/instagram', instagramRouter);
+
+const youtubeRouter = require('./routes/youtube');
+app.use('/api/auth/youtube', youtubeRouter);
+
+const tiktokRouter = require('./routes/tiktok');
+app.use('/api/auth/tiktok', tiktokRouter);
+
+const threadsRouter = require('./routes/threads');
+app.use('/api/auth/threads', threadsRouter);
+
+const blueskyRouter = require('./routes/bluesky');
+app.use('/api/auth/bluesky', blueskyRouter);
+
+const snapchatRouter = require('./routes/snapchat');
+app.use('/api/auth/snapchat', snapchatRouter);
+
 const analyticsRouter = require('./routes/analytics');
 app.use('/api/analytics', authenticateToken, analyticsRouter);
 
